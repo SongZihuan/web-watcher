@@ -6,6 +6,7 @@ import (
 	"github.com/SongZihuan/web-watcher/src/config"
 	"github.com/SongZihuan/web-watcher/src/logger"
 	"github.com/SongZihuan/web-watcher/src/notify"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -18,7 +19,7 @@ func Run() error {
 	for _, url := range config.GetConfig().Watcher.URLs {
 		logger.Infof("开始请求 %s", url.Name)
 
-		_, err := httpProcessRetry(url.URL, url.Name, url.Status, url.SkipTLSVerify.IsEnable(false))
+		_, err := httpProcessRetry(url.URL, url.Name, url.Status, url.ClientKeyPair, url.SkipTLSVerify.IsEnable(false))
 		if err != nil {
 			logger.Errorf("请求 %s 出现异常：%s", url.Name, err.Error())
 			notify.NewRecord(url.Name, url.URL, err.Error())
@@ -32,21 +33,21 @@ func Run() error {
 	return nil
 }
 
-func httpProcessRetry(url string, name string, statusList []string, skipTLSVerify bool) (int, error) {
+func httpProcessRetry(url string, name string, statusList []string, cert *tls.Certificate, skipTLSVerify bool) (int, error) {
 	var err1, err2, err3 error
 	var statusCode int
 
-	statusCode, err1 = httpProcessGet(url, name, statusList, skipTLSVerify)
+	statusCode, err1 = httpProcessGet(url, name, statusList, cert, skipTLSVerify)
 	if err1 == nil {
 		return statusCode, nil
 	}
 
-	statusCode, err2 = httpProcessGet(url, name, statusList, skipTLSVerify)
+	statusCode, err2 = httpProcessGet(url, name, statusList, cert, skipTLSVerify)
 	if err2 == nil {
 		return statusCode, nil
 	}
 
-	statusCode, err3 = httpProcessGet(url, name, statusList, skipTLSVerify)
+	statusCode, err3 = httpProcessGet(url, name, statusList, cert, skipTLSVerify)
 	if err3 == nil {
 		return statusCode, nil
 	}
@@ -68,16 +69,23 @@ func httpProcessRetry(url string, name string, statusList []string, skipTLSVerif
 	return -1, err
 }
 
-func httpProcessGet(url string, name string, statusList []string, skipTLSVerify bool) (int, error) {
+func httpProcessGet(url string, name string, statusList []string, cert *tls.Certificate, skipTLSVerify bool) (int, error) {
 	// 创建一个自定义的Transport，这样我们可以访问TLS连接状态
+	tc := &tls.Config{InsecureSkipVerify: skipTLSVerify}
+
+	if cert != nil {
+		tc.Certificates = []tls.Certificate{*cert}
+	}
+
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify}, // 忽略服务器证书验证
+		TLSClientConfig: tc, // 忽略服务器证书验证
 	}
 
 	// 使用自定义的Transport创建一个HTTP客户端
 	client := &http.Client{Transport: tr}
 
 	// 发送请求
+	fmt.Printf("请求URL：%s\n", url)
 	resp, err := client.Get(url)
 	if err != nil {
 		return 0, fmt.Errorf("获取 GET %s 请求错误：%s", name, err.Error())
@@ -87,6 +95,13 @@ func httpProcessGet(url string, name string, statusList []string, skipTLSVerify 
 	}()
 
 	statusCode := resp.StatusCode
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return statusCode, err
+	}
+
+	fmt.Printf("statusCode: %d\n%s\n", statusCode, string(data))
 
 	for _, s := range statusList {
 		switch s {

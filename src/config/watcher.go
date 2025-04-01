@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"github.com/SongZihuan/web-watcher/src/utils"
 	"strconv"
@@ -11,6 +12,10 @@ type URLConfig struct {
 	URL           string           `yaml:"url"`
 	SkipTLSVerify utils.StringBool `yaml:"skip-tls-verify"`
 	Status        []string         `yaml:"status"`
+	ClientCert    string           `yaml:"client-cert"`
+	ClientKey     string           `yaml:"client-key"`
+
+	ClientKeyPair *tls.Certificate `yaml:"-"`
 }
 
 type WatcherConfig struct {
@@ -69,6 +74,17 @@ func (w *WatcherConfig) check() (err ConfigError) {
 				}
 				continue StatusCycle
 			}
+		}
+
+		if url.ClientCert != "" && url.ClientKey != "" {
+			cert, err := tls.X509KeyPair([]byte(url.ClientCert), []byte(url.ClientKey))
+			if err != nil {
+				return NewConfigError(fmt.Sprintf("the cert/key of '%s' is not valid", url.URL))
+			}
+			url.ClientKeyPair = &cert
+			fmt.Printf("%s load client tls cert\n", url.URL)
+		} else {
+			url.ClientKeyPair = nil
 		}
 	}
 
