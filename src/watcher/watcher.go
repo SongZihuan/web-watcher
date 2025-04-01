@@ -85,7 +85,10 @@ func httpProcessGet(url string, name string, statusList []string, cert *tls.Cert
 	client := &http.Client{Transport: tr}
 
 	// 发送请求
-	fmt.Printf("请求URL：%s\n", url)
+	if config.GetConfig().GetRunMode() == config.DebugMode {
+		fmt.Printf("请求URL：%s\n", url)
+	}
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return 0, fmt.Errorf("获取 GET %s 请求错误：%s", name, err.Error())
@@ -96,12 +99,14 @@ func httpProcessGet(url string, name string, statusList []string, cert *tls.Cert
 
 	statusCode := resp.StatusCode
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return statusCode, err
-	}
+	if config.GetConfig().GetRunMode() == config.DebugMode {
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return statusCode, err
+		}
 
-	fmt.Printf("statusCode: %d\n%s\n", statusCode, string(data))
+		fmt.Printf("statusCode: %d\n%s\n", statusCode, string(data))
+	}
 
 	for _, s := range statusList {
 		switch s {
